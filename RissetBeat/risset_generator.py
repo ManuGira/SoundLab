@@ -41,39 +41,40 @@ def time_map_eponentially_accelerated(N, final_speed):
 
 
 def generate_risset_beat(sound_array, repetitions=4, octaves=3):
-    """
-    time speed goes from x1 to x2
-    """
-
-    samples = []
-    samples.append(sound_array.copy())
-    samples[0] = np.tile(samples[0], (repetitions, 1))
-    for i in range(1, octaves):
-        new_octave = double_time_speed(samples[i-1])
-        samples.append(new_octave)
-
-    # define time remapping
-    N = len(samples[0])
-    ns = time_map_eponentially_accelerated(N, 2)
+    samples = sound_array.copy()
+    N, D = samples.shape
+    meshes = []
+    speed_factor = 2
+    ns = time_map_eponentially_accelerated(repetitions*N, final_speed=speed_factor)
     M = len(ns)
+    ns = np.remainder(ns, N)
+    meshes.append(ns)
+    for i in range(1, octaves):
+        meshes.append(np.remainder(ns*speed_factor**i, N))
+    time_mesh = np.concatenate(meshes, axis=0)
 
-    # nearest neighbor
-    ns = np.round(ns).astype(int)
+    # nearest neighbor interpolation
+    time_mesh = np.round(time_mesh).astype(int)
+    # remainder to make sure no value is >= N
+    time_mesh = np.remainder(time_mesh, N)
+
 
     # resample (remap time)
-    for i in range(octaves):
-        samples[i] = samples[i][ns]
+    samples = samples[time_mesh]
 
-    # fade in/out first and last layers
+    # fade in/out
     fade_in = np.linspace(0, 1, M)
     fade_out = np.linspace(1, 0, M)
     fade_in = fade_in.reshape(-1, 1)
     fade_out = fade_out.reshape(-1, 1)
-    samples[0] = samples[0]*fade_in
-    samples[-1] = samples[-1]*fade_out
+    samples[:M] = samples[:M]*fade_in
+    samples[-M:] = samples[-M:]*fade_out
 
-    # mix layers and normalize to [-1, 1]
-    samples = sum(samples)
+    # fold spiral on itself and sum up to mix the different octaves
+    samples = samples.reshape(octaves, -1, D)
+    samples = np.sum(samples, axis=0)
+
+    # normalize to [-1, 1]
     max_amp = np.max(np.abs(samples.flatten()))
     samples /= max_amp
     return samples
@@ -89,6 +90,7 @@ def main():
 
     samples = np.tile(samples, (4, 1))
     wavfile.write(f"outputs/{filename}", fs, samples)
+
 
 if __name__ == '__main__':
     main()
