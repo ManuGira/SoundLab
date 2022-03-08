@@ -124,8 +124,10 @@ def main():
     filename = os.path.basename(src)
     ext = filename.split(".")[-1]
     filename = filename[:-len(ext)-1]
-    wavfile.write(f"outputs/{filename} - RissetBeat_R{repetitions}_O{octaves}.{ext}", fs, samples)
+    dst = f"outputs/{filename} - RissetBeat_R{repetitions}_O{octaves}.{ext}"
 
+    samples_int16 = (samples*(2**15-1)).astype(np.int16)
+    wavfile.write(dst, fs, samples_int16)
     display_risset_spiral(data, repetitions, octaves)
 
 
