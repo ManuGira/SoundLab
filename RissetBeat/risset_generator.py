@@ -2,6 +2,7 @@ import os
 import numpy as np
 from scipy.io import wavfile
 import matplotlib.pyplot as plt
+import threading
 
 
 def display_risset_spiral(sound_array, repetitions, octaves):
@@ -106,9 +107,35 @@ def generate_risset_beat(sound_array, repetitions=4, octaves=3):
     return samples
 
 
+def playsound_background(src):
+    import time
+    from playsound import playsound
+
+    def playsound_background0():
+        trys = 3
+        while trys > 0:
+            try:
+                playsound(src)
+                trys = 0
+            except Exception as e:
+                if "Error 259 for command" in str(e):
+                    trys -= 1
+                    time.sleep(0.5)
+                    print("try again")
+                else:
+                    raise(e)
+
+    loopThread = threading.Thread(target=playsound_background0, name='backgroundMusicThread')
+    loopThread.daemon = True  # shut down music thread when the rest of the program exits
+    time.sleep(1)
+    loopThread.start()
+
+
+
+
 def main():
     src = "assets/example.wav"
-    repetitions = 1
+    repetitions = 2
     octaves = 4
 
     fs, data_int16 = wavfile.read(src)
@@ -128,6 +155,9 @@ def main():
 
     samples_int16 = (samples*(2**15-1)).astype(np.int16)
     wavfile.write(dst, fs, samples_int16)
+
+    playsound_background(dst)
+
     display_risset_spiral(data, repetitions, octaves)
 
 
