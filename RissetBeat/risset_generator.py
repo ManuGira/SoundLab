@@ -1,76 +1,102 @@
-from scipy.io import wavfile
+import os
 import numpy as np
+from scipy.io import wavfile
 import matplotlib.pyplot as plt
 
-def risset_generator2(sound_array, repetition):
-    """
-    time speed x2
-    """
-    # define time remapping
-    N = len(sound_array)
-    ln2 = np.log(2)
-    M = int(ln2*N+1)
-    ns = np.arange(0, M)
-    ns = (np.exp(ns/N)-1)*N
 
-    # nearest neighbor
-    ns = np.round(ns).astype(int)
+def display_risset_spiral(sound_array, repetitions, octaves):
+    samples = sound_array.copy()
 
     # resample (remap time)
-    samples = sound_array[ns]
-    return samples
+    time_mesh, time_speed, loop_counts = compute_time_mesh(len(samples), repetitions, octaves)
+    samples = samples[time_mesh]
+    M = len(samples)//octaves
+    samples = apply_fade_window(samples, M)
 
-
-def double_time_speed(sound_array):
-    samples = sound_array.copy()
-    N = len(sound_array)
-    ns0 = np.arange(start=0, stop=N, step=2)
-    ns1 = np.arange(start=1, stop=N, step=2)
-    ns = np.concatenate((ns0, ns1))
-
+    # down sample to lighten CPU
+    N0 = len(samples)
+    N = 3000*repetitions
+    ns = np.linspace(start=0, stop=N0-1, num=N, dtype=int)
     samples = samples[ns]
-    return samples
+    time_speed = time_speed[ns]
+    loop_counts = loop_counts[ns]
+
+    # convert stereo to mono
+    samples = np.sum(samples, axis=1)
+
+    nb_points = len(samples)
+    rho = time_speed+samples
+    phi = np.linspace(0, octaves*2*np.pi, nb_points)
+
+    # xs = rho * np.cos(phi)
+    # ys = rho * np.sin(phi)
+
+    fig, ax = plt.subplots(subplot_kw={'projection': 'polar'})
+    # ax.plot(phi, rho)
+    for i in range(loop_counts[-1]+1):
+        color = "b" if i%2==0 else "r"
+        ax.plot(phi[loop_counts == i], rho[loop_counts == i], color=color)
+    plt.show()
 
 
-def time_map_eponentially_accelerated(N, final_speed):
-    lnf = np.log(final_speed)
-    M = int(N*lnf/(final_speed - 1))
-    ns = np.arange(M)
-    ns = (np.exp(ns*lnf/M) - 1) * M/lnf
+def time_map_eponentially_accelerated(N, speed_factor_per_octaves, octaves):
+    lnsf = np.log(speed_factor_per_octaves)
+    final_speed = speed_factor_per_octaves ** (octaves + 1)
+    nb_laps = np.log(final_speed / speed_factor_per_octaves) / lnsf
+    M = int(N * lnsf / (speed_factor_per_octaves - 1))
+    ns = np.arange(M*nb_laps)
+    ns = (np.exp(ns*lnsf/M) - 1) * M/lnsf
     return ns
+
+
+def compute_time_mesh(sample_length, repetitions, octaves):
+    speed_factor = 2
+
+    time_mesh = time_map_eponentially_accelerated(repetitions * sample_length, speed_factor_per_octaves=speed_factor, octaves=octaves)  # todo
+
+    # compute derivative for display
+    time_speed = np.ones_like(time_mesh)
+    time_speed[1:] = time_mesh[1:] - time_mesh[:-1]
+
+    # compute loop nb
+    loop_count = (time_mesh/sample_length).astype(int)
+
+    # nearest neighbor interpolation
+    time_mesh = np.round(time_mesh).astype(int)
+
+
+    # remainder to make sure no value is >= N
+    time_mesh = np.remainder(time_mesh, sample_length)
+
+
+    return time_mesh, time_speed, loop_count
+
+
+def apply_fade_window(samples, fade_length):
+    # fade in/out
+    samples = samples.copy()
+    fade_in = np.linspace(0, 1, fade_length)
+    fade_out = np.linspace(1, 0, fade_length)
+    fade_in = fade_in.reshape(-1, 1)
+    fade_out = fade_out.reshape(-1, 1)
+    samples[:fade_length] = samples[:fade_length] * fade_in
+    samples[-fade_length:] = samples[-fade_length:] * fade_out
+    return samples
 
 
 def generate_risset_beat(sound_array, repetitions=4, octaves=3):
     samples = sound_array.copy()
-    N, D = samples.shape
-    meshes = []
-    speed_factor = 2
-    ns = time_map_eponentially_accelerated(repetitions*N, final_speed=speed_factor)
-    M = len(ns)
-    ns = np.remainder(ns, N)
-    meshes.append(ns)
-    for i in range(1, octaves):
-        meshes.append(np.remainder(ns*speed_factor**i, N))
-    time_mesh = np.concatenate(meshes, axis=0)
-
-    # nearest neighbor interpolation
-    time_mesh = np.round(time_mesh).astype(int)
-    # remainder to make sure no value is >= N
-    time_mesh = np.remainder(time_mesh, N)
-
 
     # resample (remap time)
+    time_mesh, time_speed, loop_counts = compute_time_mesh(len(samples), repetitions, octaves)
     samples = samples[time_mesh]
 
-    # fade in/out
-    fade_in = np.linspace(0, 1, M)
-    fade_out = np.linspace(1, 0, M)
-    fade_in = fade_in.reshape(-1, 1)
-    fade_out = fade_out.reshape(-1, 1)
-    samples[:M] = samples[:M]*fade_in
-    samples[-M:] = samples[-M:]*fade_out
+    M = len(samples)//octaves
+    samples = apply_fade_window(samples, M)
+
 
     # fold spiral on itself and sum up to mix the different octaves
+    _, D = samples.shape
     samples = samples.reshape(octaves, -1, D)
     samples = np.sum(samples, axis=0)
 
@@ -81,15 +107,26 @@ def generate_risset_beat(sound_array, repetitions=4, octaves=3):
 
 
 def main():
-    filename = "indus lofi.wav"
-    fs, data_int16 = wavfile.read(f"assets/{filename}")
-    data = data_int16.copy() / (2 ** 15 - 1)
-    # gui(data)
-    data = np.repeat(data, 2, axis=0)
-    samples = generate_risset_beat(data, repetitions=2, octaves=3)
+    src = "assets/example.wav"
+    repetitions = 1
+    octaves = 4
 
+    fs, data_int16 = wavfile.read(src)
+    data = data_int16.copy() / (2 ** 15 - 1)
+
+    # half time
+    # data = np.repeat(data, 2, axis=0)
+
+    samples = generate_risset_beat(data, repetitions, octaves)
+
+    # repeat x4 and save
     samples = np.tile(samples, (4, 1))
-    wavfile.write(f"outputs/{filename}", fs, samples)
+    filename = os.path.basename(src)
+    ext = filename.split(".")[-1]
+    filename = filename[:-len(ext)-1]
+    wavfile.write(f"outputs/{filename} - RissetBeat_R{repetitions}_O{octaves}.{ext}", fs, samples)
+
+    display_risset_spiral(data, repetitions, octaves)
 
 
 if __name__ == '__main__':
