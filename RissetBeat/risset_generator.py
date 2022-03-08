@@ -109,28 +109,11 @@ def generate_risset_beat(sound_array, repetitions=4, octaves=3):
 
 def playsound_background(src):
     import time
-    from playsound import playsound
+    import playsound
 
-    def playsound_background0():
-        trys = 3
-        while trys > 0:
-            try:
-                playsound(src)
-                trys = 0
-            except Exception as e:
-                if "Error 259 for command" in str(e):
-                    trys -= 1
-                    time.sleep(0.5)
-                    print("try again")
-                else:
-                    raise(e)
-
-    loopThread = threading.Thread(target=playsound_background0, name='backgroundMusicThread')
+    loopThread = threading.Thread(target=playsound.playsound, args=(src,), name='backgroundMusicThread')
     loopThread.daemon = True  # shut down music thread when the rest of the program exits
-    time.sleep(1)
     loopThread.start()
-
-
 
 
 def main():
