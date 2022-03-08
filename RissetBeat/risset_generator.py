@@ -2,7 +2,6 @@ import os
 import numpy as np
 from scipy.io import wavfile
 import matplotlib.pyplot as plt
-import threading
 
 
 def display_risset_spiral(sound_array, repetitions, octaves):
@@ -108,12 +107,15 @@ def generate_risset_beat(sound_array, repetitions=4, octaves=3):
 
 
 def playsound_background(src):
-    import time
-    import playsound
-
-    loopThread = threading.Thread(target=playsound.playsound, args=(src,), name='backgroundMusicThread')
-    loopThread.daemon = True  # shut down music thread when the rest of the program exits
-    loopThread.start()
+    try:
+        import playsound
+    except ImportError as e:
+        print("Please, install playsound to preview result")
+        return
+    import threading
+    soundthread = threading.Thread(target=playsound.playsound, args=(src,), name='backgroundMusicThread')
+    soundthread.daemon = True  # shut down music thread when the rest of the program exits
+    soundthread.start()
 
 
 def main():
