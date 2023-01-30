@@ -101,6 +101,40 @@ def compute_db_from_spectrogram(fr_zxx, ts_zxx, Sxx, freqs0, ts0, show_plot=True
         plt.show()
     return db
 
+def get_istft(fr_zxx, ts_zxx, Zxx, Sxx, fs, coef_a, coef_b):
+    N = 1024
+    freqs0 = np.linspace(fs//N, fs, N)
+    octaves0 = herz2octave(freqs0)
+    ts0 = (octaves0 - coef_b) / coef_a  # x = (y-b)/a
+
+    delta_ts = ts_zxx[-1] - ts_zxx[0]
+    Nm1_ts = len(ts_zxx) - 1
+    xs = Nm1_ts * (ts0 - ts_zxx[0]) / delta_ts
+    delta_fr = fr_zxx[-1] - fr_zxx[0]
+    Nm1_fr = len(fr_zxx) - 1
+    ys = Nm1_fr * (freqs0 - fr_zxx[0]) / delta_fr
+
+    # I guess I should use the complex version because the phase is necessary for reconstructing time signal.
+    if False:
+        volr = cv2.remap(Zxx.real, xs.astype(np.float32), ys.astype(np.float32), interpolation=cv2.INTER_LANCZOS4)
+        voli = cv2.remap(Zxx.imag, xs.astype(np.float32), ys.astype(np.float32), interpolation=cv2.INTER_LANCZOS4)
+        vol = volr + complex(0, 1)*voli
+    else:
+        vol = cv2.remap(Sxx, xs.astype(np.float32), ys.astype(np.float32), interpolation=cv2.INTER_LANCZOS4)
+
+    vol = abs(vol) / np.median(abs(vol))
+    vol = np.concatenate((vol, vol[::-1]), axis=0).reshape((-1,))
+
+    # no idea if it's actually a good idea to get magnitude only
+    res = scipy.fft.ifft(vol, fs)
+    res = abs(res[len(res)//2])
+    
+    plt.plot(res)
+    plt.show()
+
+    # vol[vol == 0] = -np.inf
+    # db = volt2db(volume)
+
 
 def fit_sweep(x, fs):
     # COMPUTE SHORT-TERM FOURIER TRANSFORM
@@ -132,10 +166,21 @@ def fit_sweep(x, fs):
     )
 
     # READ INTENSITIES ON SPECTROGRAM
-    octaves0 = np.linspace(0,10,1001)
-    ts0 = (octaves0-coef_b) / coef_a  # x = (y-b)/a
+    # OCTAVES vs DB
+    octaves0 = np.linspace(0, 10, 1001)
+    ts0 = (octaves0 - coef_b) / coef_a  # x = (y-b)/a
     freqs0 = octave2herz(octaves0)
-    compute_db_from_spectrogram(fr_zxx, ts_zxx, Sxx, freqs0, ts0, show_plot=True)
+    db = compute_db_from_spectrogram(fr_zxx, ts_zxx, Sxx, freqs0, ts0, show_plot=True)
+
+    # FREQS vs DB
+    ts0 = (octaves0 - coef_b) / coef_a  # x = (y-b)/a
+    freqs0 = np.linspace(10, 20000, 1001)
+    db = compute_db_from_spectrogram(fr_zxx, ts_zxx, Sxx, freqs0, ts0, show_plot=True)
+    volume = db2volt(db)
+
+    # inverse STFT
+    get_istft(fr_zxx, ts_zxx, Zxx, Sxx, fs, coef_a, coef_b)
+
 
 
 def main():
