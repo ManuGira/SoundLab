@@ -1,9 +1,38 @@
 import pygame
+import pygame.mixer
+import numpy as np
 
 # Configuration de la fenêtre
 WIDTH, HEIGHT = 500, 500  # Taille de la fenêtre
 MARGIN = 50  # Marge pour les axes
 AXIS_MIN, AXIS_MAX = 0, 10  # Échelle des axes
+
+# Initialisation de Pygame et du mixer
+pygame.init()
+pygame.mixer.init()
+
+
+def play_note(frequency):
+    duration = 1.0  # Durée totale en secondes (attaque + release)
+    sample_rate = 44100  # Taux d'échantillonnage
+
+    t = np.linspace(0, duration, int(sample_rate * duration), False)
+    wave = np.sin(2 * np.pi * frequency * t)
+
+    # Enveloppe ADSR
+    attack_time = 0.005  # 5 ms d'attaque
+    release_time = 1.0  # 1 seconde de release
+    attack_samples = int(sample_rate * attack_time)
+    release_samples = int(sample_rate * release_time)
+    sustain_level = 1.0  # Pas de decay/sustain, donc max direct
+
+    envelope = np.ones_like(t)
+    envelope[:attack_samples] = np.linspace(0, sustain_level, attack_samples)  # Attack
+    envelope[-release_samples:] = np.linspace(sustain_level, 0, release_samples)  # Release
+
+    wave = (32767 * wave * envelope).astype(np.int16)
+    sound = pygame.sndarray.make_sound(np.column_stack([wave, wave]))
+    sound.play()
 
 
 # Conversion pixel -> coordonnées (0,10)
@@ -15,7 +44,9 @@ def pixel_to_coord(x, y):
 
 # Callback lors d'un clic
 def on_click(x, y):
+    frequency = 440 * y / x
     print(f"Click détecté aux coordonnées: {x}, {y}")
+    play_note(frequency)
 
 
 # Fonction pour dessiner les axes
@@ -57,8 +88,6 @@ def draw_line_from_origin(screen, x, y):
     pygame.draw.line(screen, (255, 0, 0), (MARGIN, HEIGHT - MARGIN), (x2, y2), 2)
 
 
-# Initialisation de Pygame
-pygame.init()
 screen = pygame.display.set_mode((WIDTH, HEIGHT))
 pygame.display.set_caption("Espace 2D Interactif")
 clock = pygame.time.Clock()
